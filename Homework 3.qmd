@@ -1,0 +1,226 @@
+---
+title: "Homework 3"
+format: html
+editor: visual
+---
+
+## Task 1: Conceptual Questions
+
+1.  If your working directory is **myfolder/homework/**, what relative path would you specify to get the file located at **myfolder/MyData.csv**?
+
+> The relative path you would use is **../MyData.csv**.
+
+2.  What are the major benefits of using R projects?
+
+> When you create an R project, it gets associated with a directory (or folder or repo). That folder is what the project uses as the working directory. This allows you to use relative paths from your projects working directories. As we often have many files associated with each analysis, it can make keeping analysis separate difficult. R projects provide a straightforward way to divide your work into multiple contexts.
+
+3.  What is git and what is github?
+
+> **Git** is a version control software. **Github** is an online hosting service for Git-based projects. Github allows you to have a remote file repository (folder) tracked by git
+
+4.  What are the two main differences between a tibble and a data.frame?
+
+> 1.  The default `print()` method for a tibble (which is used when you just type an R object into the console) is not the same as a data.frame. We get fancy printing that is more useful for us and doesn’t clog up our output space. We get information on the number of observations, columns, and see only the first few rows/columns.
+> 2.  Tibbles do not coerce down to a vector when you subset to only one column using `[`.
+
+5.  Rewrite the following nested function call using baseR’s chaining operator: arrange(filter(select(as_tibble(iris), starts_with("Petal"), Species), Petal.Length \< 1.55), Species)
+
+> ``` r
+> as_tibble(iris) %>%
+> select(starts_with("Petal"), Species) %>%
+> filter(Petal.Length < 1.55) %>%
+> arrange(Species)
+> ```
+
+6.  What is meant by long format data and wide format data? Which do we generally prefer for statistical analysis?
+
+> **Long format** data is when each row consists of one observation and each column one variable. **Wide format** data is when we may have more than one observation in a given row. For statistical analysis, we generally prefer long format data.
+
+
+## Task 2 Reading Delimited Data
+
+### Glass data
+
+```{r}
+library(tidyverse)
+
+# Read in data
+glass_data <- read_csv("glass.data")
+
+# Change column names
+glass_col = c("Id", "RI", "Na", "Mg", "Al", "Si", "K", "Ca", "Ba", "Fe", "Type_of_Glass")
+colnames(glass_data) <- glass_col
+
+glass_data
+```
+
+```{r}
+# Create new column from Type of Glass and filter out specific rows (use chaining)
+glass_data |>
+  mutate(Type = ifelse(Type_of_Glass == 1, "building_windows_float_processed",
+    ifelse(Type_of_Glass == 2, "building_windows_non_float_processed",
+      ifelse(Type_of_Glass == 3, "vehicle_windows_float_processed",
+        ifelse(Type_of_Glass == 4, "vehicle_windows_non_float_processed",
+          ifelse(Type_of_Glass == 5, "containers",
+            ifelse(Type_of_Glass == 6, "tableware",
+              "headlamps"
+            ))))))) |>
+  filter(Fe < 0.2 & (Type == "tableware" | Type == "headlamps"))
+```
+
+
+### Yeast data
+
+```{r}
+# Read in data
+yeast_data <- read_table("yeast.data", 
+                       col_names = c("seq_name", "mcg", "gvh", "alm", "mit", "erl", "pox", 
+                                     "vac", "nuc", "class"))
+
+yeast_data
+```
+
+```{r}
+# Drop and add new columns (use chaining)
+yeast_data |>
+  select(-seq_name, -nuc) |>
+  group_by(class) |>
+  mutate(across(
+    where(is.numeric),
+    list(mean = mean, median = median),
+    .names = "{.col}_{.fn}"))
+```
+
+
+## Task 3: Combining Excel and Delimited Data
+
+### Question 1
+```{r}
+library(readxl)
+
+# Read in excel data
+white_wine_data <- read_excel("white-wine.xlsx", 
+                            sheet = excel_sheets("white-wine.xlsx")[1])
+
+white_wine_data
+```
+
+### Question 2
+```{r}
+# Read in column names from sheet 2 of excel sheet
+wine_colnames <- read_excel("white-wine.xlsx", 
+                            sheet = excel_sheets("white-wine.xlsx")[2])
+
+# Replace white_wine_data column names
+colnames(white_wine_data) <- wine_colnames[[1]]
+
+white_wine_data
+```
+
+### Question 3
+```{r}
+# Add new wine type column
+white_wine_data<- white_wine_data |>
+                    mutate(type = "white")
+
+white_wine_data
+```
+
+### Question 4
+```{r}
+# Read in data
+red_wine_data <- read_csv2("red-wine.csv")
+
+# Replace red_wine_data column names
+colnames(red_wine_data) <- wine_colnames[[1]]
+
+# Add new wine type column and cast columns to correct type
+red_wine_data<- red_wine_data |>
+                  mutate(type = "red", 
+                  across(c("volatile_acidity", "citric_acid","chlorides", "density","sulphates"),
+                         as.double))
+
+red_wine_data
+```
+
+### Question 5
+```{r}
+# Combine the datasets into one tibble
+wine_data <- bind_rows(red_wine_data, white_wine_data)
+
+wine_data
+```
+
+### Questions 6, 7, 8, & 9
+```{r}
+# Perform specified data manipulation
+wine_data |>
+  filter(quality > 6.5, alcohol < 132) |>
+  arrange(desc(quality)) |>
+  select(contains("acid"), alcohol, type, quality) |>
+  group_by(quality) |>
+  mutate(mean_alcohol = mean(alcohol),
+         sd_alcohol = sd(alcohol))
+```
+
+
+## Task 4: Database Practice
+
+### Question 1
+```{r}
+library(DBI)
+con <- dbConnect(RSQLite::SQLite(), "lahman.db")
+
+dbListTables(con)
+```
+
+### Question 2
+```{r}
+tbl(con, "Teams") |>
+  filter(yearID == 2015) 
+```
+
+### Question 3
+```{r}
+tbl(con, sql("SELECT * FROM Teams WHERE yearID = 2015"))
+```
+
+### Question 4
+```{r}
+tbl(con, sql("SELECT playerID, yearid, category FROM HallOfFame WHERE inducted = 'Y'"))
+```
+
+### Question 5
+```{r}
+fame_data <-
+tbl(con, 
+sql("SELECT p.nameFirst, p.nameLast, h.playerID, h.yearid, h.category
+     FROM HallOfFame AS h
+     INNER JOIN People AS p ON h.playerID = p.playerID
+     WHERE h.inducted = 'Y'"))
+
+fame_data
+```
+
+### Question 6
+```{r}
+managers_data <- 
+  tbl(con, "Managers") |>
+  select(playerID, G, W, L) |>
+  group_by(playerID) |>
+  summarize(G_managed = sum(G, na.rm = TRUE),
+            Total_W = sum(W, na.rm = TRUE),
+            Total_L = sum(L, na.rm = TRUE)) |>
+  collect() |>
+  mutate(Win_Loss_Percentage = Total_W/G_managed) |>
+  arrange(desc(Win_Loss_Percentage))
+
+managers_data
+```
+
+### Question 7
+```{r}
+inner_join(managers_data, as_tibble(fame_data), by = "playerID")
+```
+
+
